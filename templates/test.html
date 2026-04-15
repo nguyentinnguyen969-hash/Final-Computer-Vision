@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INFERNO GUARD - PREMIUM AI DASHBOARD</title>
+    <!-- Tailwind CSS: Giúp tạo giao diện đẹp mà không cần viết nhiều file CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SocketIO: Cầu nối thời gian thực với Python -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <!-- Lucide Icons: Bộ các biểu tượng (icon) hiện đại -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0F172A; color: #E2E8F0; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        #video-container { position: relative; width: 640px; height: 480px; }
+        #roi-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+    </style>
+</head>
+<body class="min-h-screen p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- HEADER: Thanh tiêu đề và nút gạt Telegram -->
+        <header class="flex justify-between items-center mb-8 glass p-6 rounded-2xl">
+            <div class="flex items-center space-x-4">
+                <div class="bg-blue-600 p-3 rounded-xl animate-pulse">
+                    <i data-lucide="shield-alert" class="w-8 h-8 text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-extrabold tracking-tight text-white uppercase">INFERNO <span class="text-blue-500">GUARD AI</span></h1>
+                </div>
+            </div>
+            <div class="flex items-center space-x-6">
+                <!-- TELEGRAM SWITCH: Bật/Tắt gửi tin nhắn -->
+                <div class="flex items-center space-x-3 glass px-4 py-2 rounded-xl">
+                    <i data-lucide="send" class="w-5 h-5 text-sky-400"></i>
+                    <span class="text-sm font-semibold">Tự động Telegram</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="telegram-switch" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- VIDEO AREA (LEFT) -->
+            <div class="lg:col-span-2 space-y-6">
+                <div class="glass p-4 rounded-3xl overflow-hidden relative shadow-2xl bg-black">
+                    <div id="video-container" class="mx-auto rounded-2xl overflow-hidden shadow-inner">
+                        <!-- VIDEO FEED: Luồng ảnh liên tiếp từ app.py -->
+                        <img src="{{ url_for('video_feed') }}" id="video-feed" class="w-full h-full object-cover">
+                        <!-- ROI CANVAS: Lớp lưới trong suốt để vẽ ROI bằng chuột -->
+                        <canvas id="roi-canvas" width="640" height="480"></canvas>
+                    </div>
+                </div>
+
+                <!-- ROI CONTROLS -->
+                <div class="glass p-6 rounded-2xl flex justify-between items-center">
+                    <div class="flex items-center space-x-4">
+                        <i data-lucide="lasso-select" class="w-6 h-6 text-yellow-400"></i>
+                        <div>
+                            <p class="font-bold uppercase tracking-tight">Khu vực Giam sat (ROI)</p>
+                            <p class="text-xs text-slate-400 italic font-mono">Dung chuot kéo truoc vung video de tạo 'ZONE'</p>
+                        </div>
+                    </div>
+                    <button id="clear-roi" class="bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white px-6 py-2 rounded-xl text-sm font-bold transition-all duration-300 flex items-center space-x-2">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        <span>XOA ROI</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- LOG AREA (RIGHT) -->
+            <div class="space-y-8">
+                <div class="glass p-6 rounded-3xl h-[550px] flex flex-col bg-slate-900">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="font-bold flex items-center space-x-2">
+                            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></span>
+                            <span>NHAT KY HE THONG</span>
+                        </h3>
+                    </div>
+                    <div id="log-container" class="flex-grow overflow-y-auto space-y-3 font-mono text-sm leading-relaxed scrollbar-hide py-2">
+                        <!-- Nơi hiển thị các dòng log 'NGUY HIEM' -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIC JAVASCRIPT: Điều khiển Dashboard -->
+    <script>
+        lucide.createIcons(); // Hiển thị biểu tượng
+        const socket = io();    // Kết nối 'nháy mắt' với Server
+
+        // 1. LOGIC VE ROI (CANVAS)
+        const canvas = document.getElementById('roi-canvas');
+        const ctx = canvas.getContext('2d');
+        let startX, startY, isDrawing = false;
+        let roi = null;
+
+        canvas.addEventListener('mousedown', (e) => {
+            startX = e.offsetX; // Điểm bắt đầu click
+            startY = e.offsetY; 
+            isDrawing = true;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#FACC15'; // Màu vàng
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 5]); // Nét đứt
+            ctx.strokeRect(startX, startY, e.offsetX - startX, e.offsetY - startY);
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            isDrawing = false;
+            // Tính toán tỷ lệ % (0.0 -> 1.0) so với kích thước thật
+            const x1 = Math.min(startX, e.offsetX) / canvas.width;
+            const y1 = Math.min(startY, e.offsetY) / canvas.height;
+            const x2 = Math.max(startX, e.offsetX) / canvas.width;
+            const y2 = Math.max(startY, e.offsetY) / canvas.height;
+            
+            roi = { x1, y1, x2, y2 };
+            ctx.setLineDash([]); // Nét liền khi thả chuột
+            ctx.strokeStyle = '#FACC15';
+            ctx.strokeRect(x1 * canvas.width, y1 * canvas.height, (x2 - x1) * canvas.width, (y2 - y1) * canvas.height);
+            
+            // Gửi tọa độ % về Server để AI Engine xử lý
+            socket.emit('update_roi', roi);
+            addLog(`Da thiet lap vung ROI moi thàng công (He thong canh bao tele đang hoat động).`, 'yellow');
+        });
+
+        // XÓA ROI
+        document.getElementById('clear-roi').addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            roi = null;
+            socket.emit('update_roi', null); // Gửi null lên server để AI 'biết'
+            addLog("Da xoa vung ROI - Che độ giám sát toan khung hinh.", 'blue');
+        });
+
+        // BAT/TAT TELEGRAM
+        document.getElementById('telegram-switch').addEventListener('change', (e) => {
+            socket.emit('toggle_telegram', { enabled: e.target.checked });
+            addLog(`Telegram Alert: ${e.target.checked ? 'DA BAT (ON)' : 'DA TAT (OFF)'}`, e.target.checked ? 'emerald' : 'red');
+        });
+
+        // 2. NHẬN CẢNH BÁO TỪ SERVER (NEW DETECTION)
+        socket.on('new_detection', (data) => {
+            // Nếu có lửa -> Chữ đỏ, Nếu khói -> Chữ trắng
+            const color = data.type === 'fire' ? 'red' : 'slate';
+            addLog(data.msg, color);
+        });
+
+        // Hàm hỗ trợ viết Log vào Dashboard
+        function addLog(msg, color='slate') {
+            const logContainer = document.getElementById('log-container');
+            const time = new Date().toLocaleTimeString();
+            const p = document.createElement('p');
+            p.className = `p-2 glass rounded-lg text-${color}-400 mb-1 border-l-4 border-${color}-500`;
+            p.innerHTML = `<span class="text-slate-500 text-[10px]">[${time}]</span> ${msg}`;
+            logContainer.prepend(p); // Hiện tin nhắn mới lên đầu
+        }
+
+        // Đồng hồ hệ thống
+        setInterval(() => {
+            // Cập nhật thời gian nếu cần
+        }, 1000);
+    </script>
+</body>
+</html>

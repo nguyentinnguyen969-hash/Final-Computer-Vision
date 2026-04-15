@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>INFERNO GUARD AI | Hệ thống Giám sát Hỏa hoạn Cao cấp</title>
+
+    <!-- Link Fonts: Phông chữ Outfit sang trọng và JetBrains Mono cho log -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
+
+    <!-- SocketIO & Lucide Icons -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root {
+            --bg-deep: #0f172a;
+            --bg-card: rgba(30, 41, 59, 0.6);
+            --accent-primary: #3b82f6;
+            --accent-secondary: #0ea5e9;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-deep);
+            color: var(--text-main);
+            min-height: 100vh;
+            /* Hiệu ứng nền Gradient chìm */
+            background: radial-gradient(circle at top right, #1e293b, #0f172a);
+            padding: 1.5rem;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* --- Header Styles --- */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.2rem 2rem;
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            margin-bottom: 2rem;
+            box-shadow: var(--glass-shadow);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .brand-icon {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 14px;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+            animation: pulse-blue 3s infinite;
+        }
+
+        @keyframes pulse-blue {
+            0% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 15px rgba(59, 130, 246, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+
+        .brand h1 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            text-transform: uppercase;
+        }
+
+        .brand h1 span {
+            color: var(--accent-primary);
+            background: linear-gradient(to right, #60a5fa, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* --- Custom Switch Toggle --- */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: rgba(15, 23, 42, 0.4);
+            padding: 0.6rem 1.2rem;
+            border-radius: 99px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #334155;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        input:checked+.slider {
+            background-color: var(--success);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(22px);
+        }
+
+        /* --- Dashboard Layout --- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1100px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 32px;
+            padding: 1.75rem;
+            box-shadow: var(--glass-shadow);
+        }
+
+        /* --- Video & Area selection --- */
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            max-width: 800px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #roi-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            z-index: 10;
+        }
+
+        .roi-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1.75rem;
+            padding: 1.25rem;
+            background: rgba(15, 23, 42, 0.4);
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .roi-info {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .roi-info h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .roi-info p {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .btn-action {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border: 1px solid var(--glass-border);
+            padding: 0.8rem 1.5rem;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
+        }
+
+        /* --- Log Panel --- */
+        .log-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 600px;
+            max-height: 750px;
+        }
+
+        .log-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .live-status {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            padding: 0.4rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        #log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding-right: 0.75rem;
+            mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+        }
+
+        #log-container::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        #log-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .log-item {
+            background: rgba(15, 23, 42, 0.3);
+            border-left: 4px solid var(--accent-primary);
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.825rem;
+            transition: all 0.3s ease;
+            animation: slideInUp 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+        }
+
+        .log-item:hover {
+            transform: scale(1.02);
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .log-item.fire {
+            border-left-color: var(--danger);
+            background: rgba(239, 68, 68, 0.1);
+            color: #ff9999;
+            animation: shake 0.5s ease-in-out;
+        }
+
+        .log-item.smoke {
+            border-left-color: #94a3b8;
+            color: #e2e8f0;
+        }
+
+        .log-item.system {
+            border-left-color: var(--warning);
+            color: #fbbf24;
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes shake {
+            0% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(5px);
+            }
+
+            50% {
+                transform: translateX(-5px);
+            }
+
+            75% {
+                transform: translateX(5px);
+            }
+
+            100% {
+                transform: translateX(0);
+            }
+        }
+
+        .ts {
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            margin-right: 0.75rem;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="brand">
+                <div class="brand-icon">
+                    <i data-lucide="shield-alert" color="white" size="26"></i>
+                </div>
+                <h1>Inferno <span>Guard AI</span></h1>
+            </div>
+            <div class="controls-top">
+                <div class="switch-container">
+                    <i data-lucide="bell" size="18" color="#38bdf8"></i>
+                    <span style="font-size: 0.9rem; font-weight: 600;">Thông báo Telegram</span>
+                    <label class="switch">
+                        <input type="checkbox" id="telegram-switch" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-grid">
+            <!-- PHẦN VIDEO & ROI -->
+            <section class="card">
+                <div class="video-wrapper">
+                    <img src="{{ url_for('video_feed') }}" id="video-feed" alt="Camera stream">
+                    <canvas id="roi-canvas" width="640" height="480"></canvas>
+                </div>
+
+                <div class="roi-toolbar">
+                    <div class="roi-info">
+                        <div style="background: rgba(250, 204, 21, 0.1); padding: 0.75rem; border-radius: 12px;">
+                            <i data-lucide="maximize" color="#facc15" size="24"></i>
+                        </div>
+                        <div>
+                            <h3>Vùng giám sát thông minh (ROI)</h3>
+                            <p>Khoanh vùng khu vực cần đặc biệt chú ý để nhận cảnh báo</p>
+                        </div>
+                    </div>
+                    <button class="btn-action btn-danger" id="clear-roi">
+                        <i data-lucide="trash-2" size="18"></i>
+                        Xóa vùng vẽ
+                    </button>
+                </div>
+            </section>
+
+            <!-- PHẦN NHẬT KÝ -->
+            <section class="card log-panel">
+                <div class="log-header">
+                    <h3 style="display: flex; align-items: center; gap: 0.75rem;">
+                        <i data-lucide="activity" size="20" color="#3b82f6"></i>
+                        Hoạt động hệ thống
+                    </h3>
+                    <div class="live-status">
+                        <div class="pulse-dot"></div>
+                        Trực tiếp
+                    </div>
+                </div>
+                <div id="log-container">
+                    <!-- Logs sẽ xuất hiện ở đây -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Khởi tạo icons
+        lucide.createIcons();
+
+        const socket = io();
+        const canvas = document.getElementById('roi-canvas');
+        const ctx = canvas.getContext('2d');
+
+        let startX, startY, isDrawing = false;
+        let roi = null;
+
+        // Xử lý vẽ ROI đồng bộ với tỷ lệ hiển thị
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            startX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            startY = (e.clientY - rect.top) * (canvas.height / rect.height);
+            isDrawing = true;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const currX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const currY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 5]);
+            ctx.strokeRect(startX, startY, currX - startX, currY - startY);
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!isDrawing) return;
+            isDrawing = false;
+            const rect = canvas.getBoundingClientRect();
+            const endX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const endY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+            // Tính tỷ lệ 0.0 -> 1.0 để gửi về Backend (độc lập với độ phân giải)
+            const x1 = Math.min(startX, endX) / canvas.width;
+            const y1 = Math.min(startY, endY) / canvas.height;
+            const x2 = Math.max(startX, endX) / canvas.width;
+            const y2 = Math.max(startY, endY) / canvas.height;
+
+            // Kiểm tra kích thước tối thiểu để tránh vô tình click nhầm
+            if (Math.abs(x2 - x1) < 0.01 || Math.abs(y2 - y1) < 0.01) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            roi = { x1, y1, x2, y2 };
+            ctx.setLineDash([]);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x1 * canvas.width, y1 * canvas.height, (x2 - x1) * canvas.width, (y2 - y1) * canvas.height);
+
+            socket.emit('update_roi', roi);
+            addLog("Đã thiết lập vùng giám sát mới thành công.", "system");
+        });
+
+        // Nút xóa ROI
+        document.getElementById('clear-roi').addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            roi = null;
+            socket.emit('update_roi', null);
+            addLog("Đã tắt vùng ROI - Giám sát toàn khung hình.", "system");
+        });
+
+        // Công tắc Telegram
+        document.getElementById('telegram-switch').addEventListener('change', (e) => {
+            socket.emit('toggle_telegram', { enabled: e.target.checked });
+            addLog(`Cảnh báo Telegram: ${e.target.checked ? "Đã bật (Bắt đầu gửi ảnh)" : "Đã tắt"}`, "system");
+        });
+
+        // Nhận log từ Server SocketIO
+        socket.on('new_detection', (data) => {
+            addLog(data.msg, data.type);
+        });
+
+        // Hàm ghi Log
+        function addLog(msg, type = "default") {
+            const container = document.getElementById('log-container');
+            const time = new Date().toLocaleTimeString();
+            const div = document.createElement('div');
+            div.className = `log-item ${type}`;
+            div.innerHTML = `<span class="ts">[${time}]</span> ${msg}`;
+
+            // Chèn vào đầu danh sách
+            container.prepend(div);
+
+            // Giới hạn số lượng log hiển thị để không làm lag trình duyệt
+            if (container.children.length > 30) {
+                container.removeChild(container.lastChild);
+            }
+        }
+    </script>
+</body>
+
+</html>
